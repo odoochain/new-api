@@ -12,6 +12,9 @@ FROM golang AS builder2
 ENV GO111MODULE=on \
     CGO_ENABLED=1 \
     GOOS=linux
+# Set go proxy to https://goproxy.cn (open for vps in China Mainland)
+RUN go env -w GOPROXY=https://goproxy.cn,direct
+RUN sed -i 's/https/http/' /etc/apk/repositories
 
 WORKDIR /build
 ADD go.mod go.sum ./
