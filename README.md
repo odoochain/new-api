@@ -14,30 +14,60 @@
 > 最新版Docker镜像 calciumion/new-api:latest  
 > 更新指令 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock containrrr/watchtower -cR
 
-## 此分叉版本的主要变更
+## 主要变更
+此分叉版本的主要变更如下：
+
 1. 全新的UI界面（部分界面还待更新）
-2. 添加[Midjourney-Proxy](https://github.com/novicezk/midjourney-proxy)接口的支持：
-    + [x] /mj/submit/imagine
-    + [x] /mj/submit/change
-    + [x] /mj/submit/blend
-    + [x] /mj/submit/describe
-    + [x] /mj/image/{id} （通过此接口获取图片，**请必须在系统设置中填写服务器地址！！**）
-    + [x] /mj/task/{id}/fetch （此接口返回的图片地址为经过One API转发的地址）
-    + [x] /task/list-by-condition
+2. 添加[Midjourney-Proxy(Plus)](https://github.com/novicezk/midjourney-proxy)接口的支持，[对接文档](Midjourney.md)，支持的接口如下：
+   + [x] /mj/submit/imagine
+   + [x] /mj/submit/change
+   + [x] /mj/submit/blend
+   + [x] /mj/submit/describe
+   + [x] /mj/image/{id} （通过此接口获取图片，**请必须在系统设置中填写服务器地址！！**）
+   + [x] /mj/task/{id}/fetch （此接口返回的图片地址为经过One API转发的地址）
+   + [x] /task/list-by-condition
+   + [x] /mj/submit/action （仅midjourney-proxy-plus支持，下同）
+   + [x] /mj/submit/modal
+   + [x] /mj/submit/shorten
+   + [x] /mj/task/{id}/image-seed
+   + [x] /mj/insight-face/swap （InsightFace）
 3. 支持在线充值功能，可在系统设置中设置，当前支持的支付接口：
-    + [x] 易支付
+   + [x] 易支付
 4. 支持用key查询使用额度:
-    + 配合项目[neko-api-key-tool](https://github.com/Calcium-Ion/neko-api-key-tool)可实现用key查询使用情况，方便二次分销
+   + 配合项目[neko-api-key-tool](https://github.com/Calcium-Ion/neko-api-key-tool)可实现用key查询使用
 5. 渠道显示已使用额度，支持指定组织访问
 6. 分页支持选择每页显示数量
-7. 支持 gpt-4-1106-vision-preview，dall-e-3，tts-1
-8. 支持第三方模型 **gps** （gpt-4-gizmo-*），在渠道中添加自定义模型gpt-4-gizmo-*即可
-9. 兼容原版One API的数据库，可直接使用原版数据库（one-api.db）
-10. 支持模型按次数收费，可在 系统设置-运营设置 中设置
-11. 支持gemini-pro，gemini-pro-vision模型
-12. 支持渠道**加权随机**
-13. 数据看板
-14. 可设置令牌能调用的模型
+7. 兼容原版One API的数据库，可直接使用原版数据库（one-api.db）
+8. 支持模型按次数收费，可在 系统设置-运营设置 中设置
+9. 支持渠道**加权随机**
+10. 数据看板
+11. 可设置令牌能调用的模型
+12. 支持Telegram授权登录。
+    1. 系统设置-配置登录注册-允许通过Telegram登录
+    2. 对[@Botfather](https://t.me/botfather)输入指令/setdomain
+    3. 选择你的bot，然后输入http(s)://你的网站地址/login
+    4. Telegram Bot 名称是bot username 去掉@后的字符串
+
+## 模型支持
+此版本额外支持以下模型：
+1. 第三方模型 **gps** （gpt-4-gizmo-*）
+2. 智谱glm-4v，glm-4v识图
+3. Anthropic Claude 3 (claude-3-opus-20240229, claude-3-sonnet-20240229)
+4. [Ollama](https://github.com/ollama/ollama?tab=readme-ov-file)，添加渠道时，密钥可以随便填写，默认的请求地址是[http://localhost:11434](http://localhost:11434)，如果需要修改请在渠道中修改
+5. [Midjourney-Proxy(Plus)](https://github.com/novicezk/midjourney-proxy)接口，[对接文档](Midjourney.md)
+6. [零一万物](https://platform.lingyiwanwu.com/)
+
+您可以在渠道中添加自定义模型gpt-4-gizmo-*，此模型并非OpenAI官方模型，而是第三方模型，使用官方key无法调用。
+
+## 渠道重试
+渠道重试功能已经实现，可以在`设置->运营设置->通用设置`设置重试次数，建议开启缓存功能。  
+如果开启了重试功能，第一次重试使用同优先级，第二次重试使用下一个优先级，以此类推。  
+### 缓存设置方法
+1. `REDIS_CONN_STRING`：设置之后将使用 Redis 作为缓存使用。
+    + 例子：`REDIS_CONN_STRING=redis://default:redispw@localhost:49153`
+2. `MEMORY_CACHE_ENABLED`：启用内存缓存（如果设置了`REDIS_CONN_STRING`，则无需手动设置），会导致用户额度的更新存在一定的延迟，可选值为 `true` 和 `false`，未设置则默认为 `false`。
+    + 例子：`MEMORY_CACHE_ENABLED=true`
+
 
 ## 部署
 ### 基于 Docker 进行部署
@@ -78,6 +108,12 @@ docker run --name new-api -d --restart always -p 3000:3000 -e SQL_DSN="root:1234
 
 ![image](https://github.com/Calcium-Ion/new-api/assets/61247483/5b3228e8-2556-44f7-97d6-4f8d8ee6effa)  
 ![image](https://github.com/Calcium-Ion/new-api/assets/61247483/af9a07ee-5101-4b3d-8bd9-ae21a4fd7e9e)
+
+## 相关项目
+- [One API](https://github.com/songquanpeng/one-api)：原版项目
+- [Midjourney-Proxy](https://github.com/novicezk/midjourney-proxy)：Midjourney接口支持
+- [chatnio](https://github.com/Deeptrain-Community/chatnio)：下一代 AI 一站式 B/C 端解决方案
+- [neko-api-key-tool](https://github.com/Calcium-Ion/neko-api-key-tool)：用key查询使用额度
 
 ## Star History
 

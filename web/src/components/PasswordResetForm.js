@@ -5,7 +5,7 @@ import Turnstile from 'react-turnstile';
 
 const PasswordResetForm = () => {
   const [inputs, setInputs] = useState({
-    email: ''
+    email: '',
   });
   const { email } = inputs;
 
@@ -31,7 +31,7 @@ const PasswordResetForm = () => {
 
   function handleChange(e) {
     const { name, value } = e.target;
-    setInputs(inputs => ({ ...inputs, [name]: value }));
+    setInputs((inputs) => ({ ...inputs, [name]: value }));
   }
 
   async function handleSubmit(e) {
@@ -43,7 +43,7 @@ const PasswordResetForm = () => {
     }
     setLoading(true);
     const res = await API.get(
-      `/api/reset_password?email=${email}&turnstile=${turnstileToken}`
+      `/api/reset_password?email=${email}&turnstile=${turnstileToken}`,
     );
     const { success, message } = res.data;
     if (success) {

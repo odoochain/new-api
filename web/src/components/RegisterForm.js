@@ -1,5 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Form, Grid, Header, Image, Message, Segment } from 'semantic-ui-react';
+import {
+  Button,
+  Form,
+  Grid,
+  Header,
+  Image,
+  Message,
+  Segment,
+} from 'semantic-ui-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { API, getLogo, showError, showInfo, showSuccess } from '../helpers';
 import Turnstile from 'react-turnstile';
@@ -10,7 +18,7 @@ const RegisterForm = () => {
     password: '',
     password2: '',
     email: '',
-    verification_code: ''
+    verification_code: '',
   });
   const { username, password, password2 } = inputs;
   const [showEmailVerification, setShowEmailVerification] = useState(false);
@@ -65,7 +73,7 @@ const RegisterForm = () => {
       inputs.aff_code = affCode;
       const res = await API.post(
         `/api/user/register?turnstile=${turnstileToken}`,
-        inputs
+        inputs,
       );
       const { success, message } = res.data;
       if (success) {
@@ -86,7 +94,7 @@ const RegisterForm = () => {
     }
     setLoading(true);
     const res = await API.get(
-      `/api/verification?email=${inputs.email}&turnstile=${turnstileToken}`
+      `/api/verification?email=${inputs.email}&turnstile=${turnstileToken}`,
     );
     const { success, message } = res.data;
     if (success) {

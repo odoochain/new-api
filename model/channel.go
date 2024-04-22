@@ -8,8 +8,9 @@ import (
 type Channel struct {
 	Id                 int     `json:"id"`
 	Type               int     `json:"type" gorm:"default:0"`
-	Key                string  `json:"key" gorm:"not null;index"`
+	Key                string  `json:"key" gorm:"not null"`
 	OpenAIOrganization *string `json:"openai_organization"`
+	TestModel          *string `json:"test_model"`
 	Status             int     `json:"status" gorm:"default:1"`
 	Name               string  `json:"name" gorm:"index"`
 	Weight             *uint   `json:"weight" gorm:"default:0"`
@@ -24,6 +25,7 @@ type Channel struct {
 	Group              string  `json:"group" gorm:"type:varchar(64);default:'default'"`
 	UsedQuota          int64   `json:"used_quota" gorm:"bigint;default:0"`
 	ModelMapping       *string `json:"model_mapping" gorm:"type:varchar(1024);default:''"`
+	StatusCodeMapping  *string `json:"status_code_mapping" gorm:"type:varchar(1024);default:''"`
 	Priority           *int64  `json:"priority" gorm:"bigint;default:0"`
 	AutoBan            *int    `json:"auto_ban" gorm:"default:1"`
 }
@@ -43,21 +45,39 @@ func GetAllChannels(startIdx int, num int, selectAll bool, idSort bool) ([]*Chan
 	return channels, err
 }
 
-func SearchChannels(keyword string, group string) (channels []*Channel, err error) {
+func SearchChannels(keyword string, group string, model string) ([]*Channel, error) {
+	var channels []*Channel
 	keyCol := "`key`"
+	groupCol := "`group`"
+	modelsCol := "`models`"
+
+	// 如果是 PostgreSQL，使用双引号
 	if common.UsingPostgreSQL {
 		keyCol = `"key"`
+		groupCol = `"group"`
+		modelsCol = `"models"`
 	}
+
+	// 构造基础查询
+	baseQuery := DB.Model(&Channel{}).Omit(keyCol)
+
+	// 构造WHERE子句
+	var whereClause string
+	var args []interface{}
 	if group != "" {
-		groupCol := "`group`"
-		if common.UsingPostgreSQL {
-			groupCol = `"group"`
-		}
-		err = DB.Omit("key").Where("(id = ? or name LIKE ? or "+keyCol+" = ?) and "+groupCol+" LIKE ?", common.String2Int(keyword), keyword+"%", keyword, "%"+group+"%").Find(&channels).Error
+		whereClause = "(id = ? OR name LIKE ? OR " + keyCol + " = ?) AND " + groupCol + " LIKE ? AND " + modelsCol + " LIKE ?"
+		args = append(args, common.String2Int(keyword), "%"+keyword+"%", keyword, "%"+group+"%", "%"+model+"%")
 	} else {
-		err = DB.Omit("key").Where("id = ? or name LIKE ? or "+keyCol+" = ?", common.String2Int(keyword), keyword+"%", keyword).Find(&channels).Error
+		whereClause = "(id = ? OR name LIKE ? OR " + keyCol + " = ?) AND " + modelsCol + " LIKE ?"
+		args = append(args, common.String2Int(keyword), "%"+keyword+"%", keyword, "%"+model+"%")
 	}
-	return channels, err
+
+	// 执行查询
+	err := baseQuery.Where(whereClause, args...).Find(&channels).Error
+	if err != nil {
+		return nil, err
+	}
+	return channels, nil
 }
 
 func GetChannelById(id int, selectAll bool) (*Channel, error) {
@@ -132,6 +152,13 @@ func (channel *Channel) GetModelMapping() string {
 		return ""
 	}
 	return *channel.ModelMapping
+}
+
+func (channel *Channel) GetStatusCodeMapping() string {
+	if channel.StatusCodeMapping == nil {
+		return ""
+	}
+	return *channel.StatusCodeMapping
 }
 
 func (channel *Channel) Insert() error {

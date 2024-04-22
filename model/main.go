@@ -5,9 +5,11 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"log"
 	"one-api/common"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -60,6 +62,7 @@ func chooseDB() (*gorm.DB, error) {
 				dsn += "?parseTime=true"
 			}
 		}
+		common.UsingMySQL = true
 		return gorm.Open(mysql.Open(dsn), &gorm.Config{
 			PrepareStmt: true, // precompile SQL
 		})
@@ -89,6 +92,12 @@ func InitDB() (err error) {
 
 		if !common.IsMasterNode {
 			return nil
+		}
+		if common.UsingMySQL {
+			_, _ = sqlDB.Exec("DROP INDEX idx_channels_key ON channels;")             // TODO: delete this line when most users have upgraded
+			_, _ = sqlDB.Exec("ALTER TABLE midjourneys MODIFY action VARCHAR(40);")   // TODO: delete this line when most users have upgraded
+			_, _ = sqlDB.Exec("ALTER TABLE midjourneys MODIFY progress VARCHAR(30);") // TODO: delete this line when most users have upgraded
+			_, _ = sqlDB.Exec("ALTER TABLE midjourneys MODIFY status VARCHAR(20);")   // TODO: delete this line when most users have upgraded
 		}
 		common.SysLog("database migration started")
 		err = db.AutoMigrate(&Channel{})
@@ -147,4 +156,34 @@ func CloseDB() error {
 	}
 	err = sqlDB.Close()
 	return err
+}
+
+var (
+	lastPingTime time.Time
+	pingMutex    sync.Mutex
+)
+
+func PingDB() error {
+	pingMutex.Lock()
+	defer pingMutex.Unlock()
+
+	if time.Since(lastPingTime) < time.Second*10 {
+		return nil
+	}
+
+	sqlDB, err := DB.DB()
+	if err != nil {
+		log.Printf("Error getting sql.DB from GORM: %v", err)
+		return err
+	}
+
+	err = sqlDB.Ping()
+	if err != nil {
+		log.Printf("Error pinging DB: %v", err)
+		return err
+	}
+
+	lastPingTime = time.Now()
+	common.SysLog("Database pinged successfully")
+	return nil
 }

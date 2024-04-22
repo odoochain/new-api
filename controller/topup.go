@@ -2,14 +2,18 @@ package controller
 
 import (
 	"fmt"
+	"github.com/Calcium-Ion/go-epay/epay"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
-	epay "github.com/star-horizon/go-epay"
+	"one-api/constant"
+
 	"log"
 	"net/url"
 	"one-api/common"
 	"one-api/model"
+	"one-api/service"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -25,44 +29,59 @@ type AmountRequest struct {
 }
 
 func GetEpayClient() *epay.Client {
-	if common.PayAddress == "" || common.EpayId == "" || common.EpayKey == "" {
+	if constant.PayAddress == "" || constant.EpayId == "" || constant.EpayKey == "" {
 		return nil
 	}
-	withUrl, err := epay.NewClientWithUrl(&epay.Config{
-		PartnerID: common.EpayId,
-		Key:       common.EpayKey,
-	}, common.PayAddress)
+	withUrl, err := epay.NewClient(&epay.Config{
+		PartnerID: constant.EpayId,
+		Key:       constant.EpayKey,
+	}, constant.PayAddress)
 	if err != nil {
 		return nil
 	}
 	return withUrl
 }
 
-func GetAmount(count float64, user model.User) float64 {
+func getPayMoney(amount float64, user model.User) float64 {
+	if !common.DisplayInCurrencyEnabled {
+		amount = amount / common.QuotaPerUnit
+	}
 	// 别问为什么用float64，问就是这么点钱没必要
 	topupGroupRatio := common.GetTopupGroupRatio(user.Group)
 	if topupGroupRatio == 0 {
 		topupGroupRatio = 1
 	}
-	amount := count * common.Price * topupGroupRatio
-	return amount
+	payMoney := amount * constant.Price * topupGroupRatio
+	return payMoney
+}
+
+func getMinTopup() int {
+	minTopup := constant.MinTopUp
+	if !common.DisplayInCurrencyEnabled {
+		minTopup = minTopup * int(common.QuotaPerUnit)
+	}
+	return minTopup
 }
 
 func RequestEpay(c *gin.Context) {
 	var req EpayRequest
 	err := c.ShouldBindJSON(&req)
 	if err != nil {
-		c.JSON(200, gin.H{"message": err.Error(), "data": 10})
+		c.JSON(200, gin.H{"message": "error", "data": "参数错误"})
 		return
 	}
-	if req.Amount < 1 {
-		c.JSON(200, gin.H{"message": "充值金额不能小于1", "data": 10})
+	if req.Amount < getMinTopup() {
+		c.JSON(200, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getMinTopup())})
 		return
 	}
 
 	id := c.GetInt("id")
 	user, _ := model.GetUserById(id, false)
-	amount := GetAmount(float64(req.Amount), *user)
+	payMoney := getPayMoney(float64(req.Amount), *user)
+	if payMoney < 0.01 {
+		c.JSON(200, gin.H{"message": "error", "data": "充值金额过低"})
+		return
+	}
 
 	var payType epay.PurchaseType
 	if req.PaymentMethod == "zfb" {
@@ -72,11 +91,10 @@ func RequestEpay(c *gin.Context) {
 		req.PaymentMethod = "wxpay"
 		payType = epay.WechatPay
 	}
-
+	callBackAddress := service.GetCallbackAddress()
 	returnUrl, _ := url.Parse(common.ServerAddress + "/log")
-	notifyUrl, _ := url.Parse(common.ServerAddress + "/api/user/epay/notify")
-	tradeNo := strconv.FormatInt(time.Now().Unix(), 10)
-	payMoney := amount
+	notifyUrl, _ := url.Parse(callBackAddress + "/api/user/epay/notify")
+	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
 	client := GetEpayClient()
 	if client == nil {
 		c.JSON(200, gin.H{"message": "error", "data": "当前管理员未配置支付信息"})
@@ -95,9 +113,13 @@ func RequestEpay(c *gin.Context) {
 		c.JSON(200, gin.H{"message": "error", "data": "拉起支付失败"})
 		return
 	}
+	amount := req.Amount
+	if !common.DisplayInCurrencyEnabled {
+		amount = amount / int(common.QuotaPerUnit)
+	}
 	topUp := &model.TopUp{
 		UserId:     id,
-		Amount:     req.Amount,
+		Amount:     amount,
 		Money:      payMoney,
 		TradeNo:    "A" + tradeNo,
 		CreateTime: time.Now().Unix(),
@@ -111,6 +133,33 @@ func RequestEpay(c *gin.Context) {
 	c.JSON(200, gin.H{"message": "success", "data": params, "url": uri})
 }
 
+// tradeNo lock
+var orderLocks sync.Map
+var createLock sync.Mutex
+
+// LockOrder 尝试对给定订单号加锁
+func LockOrder(tradeNo string) {
+	lock, ok := orderLocks.Load(tradeNo)
+	if !ok {
+		createLock.Lock()
+		defer createLock.Unlock()
+		lock, ok = orderLocks.Load(tradeNo)
+		if !ok {
+			lock = new(sync.Mutex)
+			orderLocks.Store(tradeNo, lock)
+		}
+	}
+	lock.(*sync.Mutex).Lock()
+}
+
+// UnlockOrder 释放给定订单号的锁
+func UnlockOrder(tradeNo string) {
+	lock, ok := orderLocks.Load(tradeNo)
+	if ok {
+		lock.(*sync.Mutex).Unlock()
+	}
+}
+
 func EpayNotify(c *gin.Context) {
 	params := lo.Reduce(lo.Keys(c.Request.URL.Query()), func(r map[string]string, t string, i int) map[string]string {
 		r[t] = c.Request.URL.Query().Get(t)
@@ -122,6 +171,7 @@ func EpayNotify(c *gin.Context) {
 		_, err := c.Writer.Write([]byte("fail"))
 		if err != nil {
 			log.Println("易支付回调写入失败")
+			return
 		}
 	}
 	verifyInfo, err := client.Verify(params)
@@ -135,11 +185,19 @@ func EpayNotify(c *gin.Context) {
 		if err != nil {
 			log.Println("易支付回调写入失败")
 		}
+		log.Println("易支付回调签名验证失败")
+		return
 	}
 
 	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
 		log.Println(verifyInfo)
+		LockOrder(verifyInfo.ServiceTradeNo)
+		defer UnlockOrder(verifyInfo.ServiceTradeNo)
 		topUp := model.GetTopUpByTradeNo(verifyInfo.ServiceTradeNo)
+		if topUp == nil {
+			log.Printf("易支付回调未找到订单: %v", verifyInfo)
+			return
+		}
 		if topUp.Status == "pending" {
 			topUp.Status = "success"
 			err := topUp.Update()
@@ -149,13 +207,13 @@ func EpayNotify(c *gin.Context) {
 			}
 			//user, _ := model.GetUserById(topUp.UserId, false)
 			//user.Quota += topUp.Amount * 500000
-			err = model.IncreaseUserQuota(topUp.UserId, topUp.Amount*500000)
+			err = model.IncreaseUserQuota(topUp.UserId, topUp.Amount*int(common.QuotaPerUnit))
 			if err != nil {
 				log.Printf("易支付回调更新用户失败: %v", topUp)
 				return
 			}
 			log.Printf("易支付回调更新用户成功 %v", topUp)
-			model.RecordLog(topUp.UserId, model.LogTypeTopup, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", common.LogQuota(topUp.Amount*500000), topUp.Money))
+			model.RecordLog(topUp.UserId, model.LogTypeTopup, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", common.LogQuota(topUp.Amount*int(common.QuotaPerUnit)), topUp.Money))
 		}
 	} else {
 		log.Printf("易支付异常回调: %v", verifyInfo)
@@ -169,12 +227,17 @@ func RequestAmount(c *gin.Context) {
 		c.JSON(200, gin.H{"message": "error", "data": "参数错误"})
 		return
 	}
-	if req.Amount < 1 {
-		c.JSON(200, gin.H{"message": "error", "data": "充值金额不能小于1"})
+
+	if req.Amount < getMinTopup() {
+		c.JSON(200, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getMinTopup())})
 		return
 	}
 	id := c.GetInt("id")
 	user, _ := model.GetUserById(id, false)
-	payMoney := GetAmount(float64(req.Amount), *user)
+	payMoney := getPayMoney(float64(req.Amount), *user)
+	if payMoney <= 0.01 {
+		c.JSON(200, gin.H{"message": "error", "data": "充值金额过低"})
+		return
+	}
 	c.JSON(200, gin.H{"message": "success", "data": strconv.FormatFloat(payMoney, 'f', 2, 64)})
 }

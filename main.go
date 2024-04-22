@@ -13,16 +13,17 @@ import (
 	"one-api/middleware"
 	"one-api/model"
 	"one-api/router"
+	"one-api/service"
 	"os"
 	"strconv"
 
 	_ "net/http/pprof"
 )
 
-//go:embed web/build
+//go:embed web/dist
 var buildFS embed.FS
 
-//go:embed web/build/index.html
+//go:embed web/dist/index.html
 var indexPage []byte
 
 func main() {
@@ -105,7 +106,7 @@ func main() {
 		common.SysLog("pprof enabled")
 	}
 
-	controller.InitTokenEncoders()
+	service.InitTokenEncoders()
 
 	// Initialize HTTP server
 	server := gin.New()

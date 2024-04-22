@@ -1,10 +1,10 @@
 package router
 
 import (
+	"github.com/gin-gonic/gin"
 	"one-api/controller"
 	"one-api/middleware"
-
-	"github.com/gin-gonic/gin"
+	"one-api/relay"
 )
 
 func SetRelayRouter(router *gin.Engine) {
@@ -43,10 +43,22 @@ func SetRelayRouter(router *gin.Engine) {
 		relayV1Router.DELETE("/models/:model", controller.RelayNotImplemented)
 		relayV1Router.POST("/moderations", controller.Relay)
 	}
+
 	relayMjRouter := router.Group("/mj")
-	relayMjRouter.GET("/image/:id", controller.RelayMidjourneyImage)
+	registerMjRouterGroup(relayMjRouter)
+
+	relayMjModeRouter := router.Group("/:mode/mj")
+	registerMjRouterGroup(relayMjModeRouter)
+	//relayMjRouter.Use()
+}
+
+func registerMjRouterGroup(relayMjRouter *gin.RouterGroup) {
+	relayMjRouter.GET("/image/:id", relay.RelayMidjourneyImage)
 	relayMjRouter.Use(middleware.TokenAuth(), middleware.Distribute())
 	{
+		relayMjRouter.POST("/submit/action", controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/shorten", controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/modal", controller.RelayMidjourney)
 		relayMjRouter.POST("/submit/imagine", controller.RelayMidjourney)
 		relayMjRouter.POST("/submit/change", controller.RelayMidjourney)
 		relayMjRouter.POST("/submit/simple-change", controller.RelayMidjourney)
@@ -54,7 +66,8 @@ func SetRelayRouter(router *gin.Engine) {
 		relayMjRouter.POST("/submit/blend", controller.RelayMidjourney)
 		relayMjRouter.POST("/notify", controller.RelayMidjourney)
 		relayMjRouter.GET("/task/:id/fetch", controller.RelayMidjourney)
+		relayMjRouter.GET("/task/:id/image-seed", controller.RelayMidjourney)
 		relayMjRouter.POST("/task/list-by-condition", controller.RelayMidjourney)
+		relayMjRouter.POST("/insight-face/swap", controller.RelayMidjourney)
 	}
-	//relayMjRouter.Use()
 }

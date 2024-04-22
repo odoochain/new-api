@@ -3,10 +3,12 @@ package model
 import (
 	"errors"
 	"fmt"
-	"gorm.io/gorm"
 	"one-api/common"
+	"strconv"
 	"strings"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
@@ -21,6 +23,7 @@ type User struct {
 	Email            string         `json:"email" gorm:"index" validate:"max=50"`
 	GitHubId         string         `json:"github_id" gorm:"column:github_id;index"`
 	WeChatId         string         `json:"wechat_id" gorm:"column:wechat_id;index"`
+	TelegramId       string         `json:"telegram_id" gorm:"column:telegram_id;index"`
 	VerificationCode string         `json:"verification_code" gorm:"-:all"`                                    // this field is only for Email verification, don't save it to database!
 	AccessToken      string         `json:"access_token" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
 	Quota            int            `json:"quota" gorm:"type:int;default:0"`
@@ -70,8 +73,26 @@ func GetAllUsers(startIdx int, num int) (users []*User, err error) {
 	return users, err
 }
 
-func SearchUsers(keyword string) (users []*User, err error) {
-	err = DB.Omit("password").Where("id = ? or username LIKE ? or email LIKE ? or display_name LIKE ?", keyword, keyword+"%", keyword+"%", keyword+"%").Find(&users).Error
+func SearchUsers(keyword string) ([]*User, error) {
+	var users []*User
+	var err error
+
+	// 尝试将关键字转换为整数ID
+	keywordInt, err := strconv.Atoi(keyword)
+	if err == nil {
+		// 如果转换成功，按照ID搜索用户
+		err = DB.Unscoped().Omit("password").Where("id = ?", keywordInt).Find(&users).Error
+		if err != nil || len(users) > 0 {
+			// 如果依据ID找到用户或者发生错误，返回结果或错误
+			return users, err
+		}
+	}
+
+	// 如果ID转换失败或者没有找到用户，依据其他字段进行模糊搜索
+	err = DB.Unscoped().Omit("password").
+		Where("username LIKE ? OR email LIKE ? OR display_name LIKE ?", keyword+"%", keyword+"%", keyword+"%").
+		Find(&users).Error
+
 	return users, err
 }
 
@@ -208,6 +229,27 @@ func (user *User) Update(updatePassword bool) error {
 	if err == nil {
 		if common.RedisEnabled {
 			_ = common.RedisSet(fmt.Sprintf("user_group:%d", user.Id), user.Group, time.Duration(UserId2GroupCacheSeconds)*time.Second)
+			_ = common.RedisSet(fmt.Sprintf("user_quota:%d", user.Id), strconv.Itoa(user.Quota), time.Duration(UserId2QuotaCacheSeconds)*time.Second)
+		}
+	}
+	return err
+}
+
+func (user *User) UpdateAll(updatePassword bool) error {
+	var err error
+	if updatePassword {
+		user.Password, err = common.Password2Hash(user.Password)
+		if err != nil {
+			return err
+		}
+	}
+	newUser := *user
+	DB.First(&user, user.Id)
+	err = DB.Model(user).Select("*").Updates(newUser).Error
+	if err == nil {
+		if common.RedisEnabled {
+			_ = common.RedisSet(fmt.Sprintf("user_group:%d", user.Id), user.Group, time.Duration(UserId2GroupCacheSeconds)*time.Second)
+			_ = common.RedisSet(fmt.Sprintf("user_quota:%d", user.Id), strconv.Itoa(user.Quota), time.Duration(UserId2QuotaCacheSeconds)*time.Second)
 		}
 	}
 	return err
@@ -286,6 +328,17 @@ func (user *User) FillUserByUsername() error {
 	return nil
 }
 
+func (user *User) FillUserByTelegramId() error {
+	if user.TelegramId == "" {
+		return errors.New("Telegram id 为空！")
+	}
+	err := DB.Where(User{TelegramId: user.TelegramId}).First(user).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return errors.New("该 Telegram 账户未绑定")
+	}
+	return nil
+}
+
 func IsEmailAlreadyTaken(email string) bool {
 	return DB.Where("email = ?", email).Find(&User{}).RowsAffected == 1
 }
@@ -300,6 +353,10 @@ func IsGitHubIdAlreadyTaken(githubId string) bool {
 
 func IsUsernameAlreadyTaken(username string) bool {
 	return DB.Where("username = ?", username).Find(&User{}).RowsAffected == 1
+}
+
+func IsTelegramIdAlreadyTaken(telegramId string) bool {
+	return DB.Where("telegram_id = ?", telegramId).Find(&User{}).RowsAffected == 1
 }
 
 func ResetUserPasswordByEmail(email string, password string) error {
@@ -353,6 +410,11 @@ func ValidateAccessToken(token string) (user *User) {
 
 func GetUserQuota(id int) (quota int, err error) {
 	err = DB.Model(&User{}).Where("id = ?", id).Select("quota").Find(&quota).Error
+	if err != nil {
+		if common.RedisEnabled {
+			go cacheSetUserQuota(id, quota)
+		}
+	}
 	return quota, err
 }
 

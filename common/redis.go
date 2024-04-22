@@ -18,9 +18,8 @@ func InitRedisClient() (err error) {
 		return nil
 	}
 	if os.Getenv("SYNC_FREQUENCY") == "" {
-		RedisEnabled = false
-		SysLog("SYNC_FREQUENCY not set, Redis is disabled")
-		return nil
+		SysLog("SYNC_FREQUENCY not set, use default value 60")
+		SyncFrequency = 60
 	}
 	SysLog("Redis is enabled")
 	opt, err := redis.ParseURL(os.Getenv("REDIS_CONN_STRING"))
@@ -73,6 +72,35 @@ func RedisDel(key string) error {
 }
 
 func RedisDecrease(key string, value int64) error {
-	ctx := context.Background()
-	return RDB.DecrBy(ctx, key, value).Err()
+
+	// 检查键的剩余生存时间
+	ttlCmd := RDB.TTL(context.Background(), key)
+	ttl, err := ttlCmd.Result()
+	if err != nil {
+		// 失败则尝试直接减少
+		return RDB.DecrBy(context.Background(), key, value).Err()
+	}
+
+	// 如果剩余生存时间大于0，则进行减少操作
+	if ttl > 0 {
+		ctx := context.Background()
+		// 开始一个Redis事务
+		txn := RDB.TxPipeline()
+
+		// 减少余额
+		decrCmd := txn.DecrBy(ctx, key, value)
+		if err := decrCmd.Err(); err != nil {
+			return err // 如果减少失败，则直接返回错误
+		}
+
+		// 重新设置过期时间，使用原来的过期时间
+		txn.Expire(ctx, key, ttl)
+
+		// 执行事务
+		_, err = txn.Exec(ctx)
+		return err
+	} else {
+		_ = RedisDel(key)
+	}
+	return nil
 }

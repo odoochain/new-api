@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
 import { getFooterHTML, getSystemName } from '../helpers';
-import {Layout} from "@douyinfe/semi-ui";
+import { Layout } from '@douyinfe/semi-ui';
 
 const Footer = () => {
   const systemName = getSystemName();
@@ -29,7 +29,7 @@ const Footer = () => {
 
   return (
     <Layout>
-      <Layout.Content style={{textAlign: 'center'}}>
+      <Layout.Content style={{ textAlign: 'center' }}>
         {footer ? (
           <div
             className='custom-footer'
@@ -40,15 +40,24 @@ const Footer = () => {
             <a
               href='https://github.com/Calcium-Ion/new-api'
               target='_blank'
+              rel='noreferrer'
             >
-              New API {process.env.REACT_APP_VERSION}{' '}
+              New API {import.meta.env.VITE_REACT_APP_VERSION}{' '}
             </a>
             由{' '}
-            <a href='https://github.com/Calcium-Ion' target='_blank'>
+            <a
+              href='https://github.com/Calcium-Ion'
+              target='_blank'
+              rel='noreferrer'
+            >
               Calcium-Ion
             </a>{' '}
             开发，基于{' '}
-            <a href='https://github.com/songquanpeng/one-api' target='_blank'>
+            <a
+              href='https://github.com/songquanpeng/one-api'
+              target='_blank'
+              rel='noreferrer'
+            >
               One API v0.5.4
             </a>{' '}
             ，本项目根据{' '}
