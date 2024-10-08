@@ -27,6 +27,8 @@ const SystemSetting = () => {
     SMTPFrom: '',
     SMTPToken: '',
     ServerAddress: '',
+    WorkerUrl: '',
+    WorkerValidKey: '',
     EpayId: '',
     EpayKey: '',
     Price: 7.3,
@@ -145,6 +147,8 @@ const SystemSetting = () => {
       name === 'Notice' ||
       (name.startsWith('SMTP') && name !== 'SMTPSSLEnabled') ||
       name === 'ServerAddress' ||
+      name === 'WorkerUrl' ||
+      name === 'WorkerValidKey' ||
       name === 'EpayId' ||
       name === 'EpayKey' ||
       name === 'Price' ||
@@ -172,6 +176,14 @@ const SystemSetting = () => {
     await updateOption('ServerAddress', ServerAddress);
   };
 
+  const submitWorker = async () => {
+    let WorkerUrl = removeTrailingSlash(inputs.WorkerUrl);
+    await updateOption('WorkerUrl', WorkerUrl);
+    if (inputs.WorkerValidKey !== '') {
+      await updateOption('WorkerValidKey', inputs.WorkerValidKey);
+    }
+  }
+
   const submitPayAddress = async () => {
     if (inputs.ServerAddress === '') {
       showError('请先填写服务器地址');
@@ -189,7 +201,7 @@ const SystemSetting = () => {
     if (inputs.EpayId !== '') {
       await updateOption('EpayId', inputs.EpayId);
     }
-    if (inputs.EpayKey !== '') {
+    if (inputs.EpayKey !== undefined && inputs.EpayKey !== '') {
       await updateOption('EpayKey', inputs.EpayKey);
     }
     await updateOption('Price', '' + inputs.Price);
@@ -326,6 +338,28 @@ const SystemSetting = () => {
           </Form.Group>
           <Form.Button onClick={submitServerAddress}>
             更新服务器地址
+          </Form.Button>
+          <Header as='h3' inverted={isDark}>
+            代理设置（支持 <a href='https://github.com/Calcium-Ion/new-api-worker' target='_blank' rel='noreferrer'>new-api-worker</a>）
+          </Header>
+          <Form.Group widths='equal'>
+            <Form.Input
+              label='Worker地址，不填写则不启用代理'
+              placeholder='例如：https://workername.yourdomain.workers.dev'
+              value={inputs.WorkerUrl}
+              name='WorkerUrl'
+              onChange={handleInputChange}
+            />
+            <Form.Input
+              label='Worker密钥，根据你部署的 Worker 填写'
+              placeholder='例如：your_secret_key'
+              value={inputs.WorkerValidKey}
+              name='WorkerValidKey'
+              onChange={handleInputChange}
+            />
+          </Form.Group>
+          <Form.Button onClick={submitWorker}>
+            更新Worker设置
           </Form.Button>
           <Divider />
           <Header as='h3' inverted={isDark}>

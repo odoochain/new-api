@@ -34,6 +34,7 @@ type OpenAITextResponseChoice struct {
 
 type OpenAITextResponse struct {
 	Id      string                     `json:"id"`
+	Model   string                     `json:"model"`
 	Object  string                     `json:"object"`
 	Created int64                      `json:"created"`
 	Choices []OpenAITextResponseChoice `json:"choices"`
@@ -54,15 +55,27 @@ type OpenAIEmbeddingResponse struct {
 }
 
 type ChatCompletionsStreamResponseChoice struct {
-	Delta        ChatCompletionsStreamResponseChoiceDelta `json:"delta"`
-	FinishReason *string                                  `json:"finish_reason,omitempty"`
-	Index        int                                      `json:"index,omitempty"`
+	Delta        ChatCompletionsStreamResponseChoiceDelta `json:"delta,omitempty"`
+	Logprobs     *any                                     `json:"logprobs"`
+	FinishReason *string                                  `json:"finish_reason"`
+	Index        int                                      `json:"index"`
 }
 
 type ChatCompletionsStreamResponseChoiceDelta struct {
-	Content   string     `json:"content"`
+	Content   *string    `json:"content,omitempty"`
 	Role      string     `json:"role,omitempty"`
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
+}
+
+func (c *ChatCompletionsStreamResponseChoiceDelta) SetContentString(s string) {
+	c.Content = &s
+}
+
+func (c *ChatCompletionsStreamResponseChoiceDelta) GetContentString() string {
+	if c.Content == nil {
+		return ""
+	}
+	return *c.Content
 }
 
 type ToolCall struct {
@@ -74,21 +87,37 @@ type ToolCall struct {
 }
 
 type FunctionCall struct {
-	Name string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
+	Name        string `json:"name,omitempty"`
 	// call function with arguments in JSON format
-	Arguments string `json:"arguments,omitempty"`
+	Parameters any    `json:"parameters,omitempty"` // request
+	Arguments  string `json:"arguments,omitempty"`
 }
 
 type ChatCompletionsStreamResponse struct {
-	Id      string                                `json:"id"`
-	Object  string                                `json:"object"`
-	Created int64                                 `json:"created"`
-	Model   string                                `json:"model"`
-	Choices []ChatCompletionsStreamResponseChoice `json:"choices"`
+	Id                string                                `json:"id"`
+	Object            string                                `json:"object"`
+	Created           int64                                 `json:"created"`
+	Model             string                                `json:"model"`
+	SystemFingerprint *string                               `json:"system_fingerprint"`
+	Choices           []ChatCompletionsStreamResponseChoice `json:"choices"`
+	Usage             *Usage                                `json:"usage"`
+}
+
+func (c *ChatCompletionsStreamResponse) GetSystemFingerprint() string {
+	if c.SystemFingerprint == nil {
+		return ""
+	}
+	return *c.SystemFingerprint
+}
+
+func (c *ChatCompletionsStreamResponse) SetSystemFingerprint(s string) {
+	c.SystemFingerprint = &s
 }
 
 type ChatCompletionsStreamResponseSimple struct {
 	Choices []ChatCompletionsStreamResponseChoice `json:"choices"`
+	Usage   *Usage                                `json:"usage"`
 }
 
 type CompletionsStreamResponse struct {

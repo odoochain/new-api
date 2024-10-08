@@ -6,6 +6,7 @@ import {
   showError,
   showInfo,
   showSuccess,
+  showWarning,
   timestamp2string,
 } from '../helpers';
 
@@ -31,6 +32,7 @@ import {
 } from '@douyinfe/semi-ui';
 import EditChannel from '../pages/Channel/EditChannel';
 import { IconTreeTriangleDown } from '@douyinfe/semi-icons';
+import { loadChannelModels } from './utils.js';
 
 function renderTimestamp(timestamp) {
   return <>{timestamp2string(timestamp)}</>;
@@ -94,7 +96,23 @@ const ChannelsTable = () => {
       title: '状态',
       dataIndex: 'status',
       render: (text, record, index) => {
-        return <div>{renderStatus(text)}</div>;
+        if (text === 3) {
+          if (record.other_info === '') {
+            record.other_info = '{}'
+          }
+          let otherInfo = JSON.parse(record.other_info);
+          let reason = otherInfo['status_reason'];
+          let time = otherInfo['status_time'];
+          return (
+            <div>
+              <Tooltip content={'原因：' + reason + '，时间：' + timestamp2string(time)}>
+                {renderStatus(text)}
+              </Tooltip>
+            </div>
+          );
+        } else {
+          return renderStatus(text);
+        }
       },
     },
     {
@@ -308,6 +326,12 @@ const ChannelsTable = () => {
 
   const setChannelFormat = (channels) => {
     for (let i = 0; i < channels.length; i++) {
+      // if (channels[i].type === 8) {
+      //   showWarning(
+      //     '检测到您使用了“自定义渠道”类型，请更换为“OpenAI”渠道类型！',
+      //   );
+      //   showWarning('下个版本将不再支持“自定义渠道”类型！');
+      // }
       channels[i].key = '' + channels[i].id;
       let test_models = [];
       channels[i].models.split(',').forEach((item, index) => {
@@ -354,27 +378,29 @@ const ChannelsTable = () => {
   };
 
   const copySelectedChannel = async (id) => {
-    const channelToCopy = channels.find(channel => String(channel.id) === String(id));
-    console.log(channelToCopy)
+    const channelToCopy = channels.find(
+      (channel) => String(channel.id) === String(id),
+    );
+    console.log(channelToCopy);
     channelToCopy.name += '_复制';
     channelToCopy.created_time = null;
     channelToCopy.balance = 0;
     channelToCopy.used_quota = 0;
     if (!channelToCopy) {
-        showError("渠道未找到，请刷新页面后重试。");
-        return;
+      showError('渠道未找到，请刷新页面后重试。');
+      return;
     }
     try {
-        const newChannel = {...channelToCopy, id: undefined};
-        const response = await API.post('/api/channel/', newChannel);
-        if (response.data.success) {
-            showSuccess("渠道复制成功");
-            await refresh();
-        } else {
-            showError(response.data.message);
-        }
+      const newChannel = { ...channelToCopy, id: undefined };
+      const response = await API.post('/api/channel/', newChannel);
+      if (response.data.success) {
+        showSuccess('渠道复制成功');
+        await refresh();
+      } else {
+        showError(response.data.message);
+      }
     } catch (error) {
-        showError("渠道复制失败: " + error.message);
+      showError('渠道复制失败: ' + error.message);
     }
   };
 
@@ -395,6 +421,7 @@ const ChannelsTable = () => {
         showError(reason);
       });
     fetchGroups().then();
+    loadChannelModels().then();
   }, []);
 
   const manageChannel = async (id, action, record, value) => {
@@ -523,7 +550,7 @@ const ChannelsTable = () => {
     );
     const { success, message, data } = res.data;
     if (success) {
-      setChannels(data);
+      setChannelFormat(data);
       setActivePage(1);
     } else {
       showError(message);
@@ -718,7 +745,8 @@ const ChannelsTable = () => {
             <Form.Select
               field='group'
               label='分组'
-              optionList={groupOptions}
+              optionList={[{ label: '选择分组', value: null}, ...groupOptions]}
+              initValue={null}
               onChange={(v) => {
                 setSearchGroup(v);
                 searchChannels(searchKeyword, v, searchModel);

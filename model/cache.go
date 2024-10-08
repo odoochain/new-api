@@ -87,7 +87,7 @@ func SyncTokenCache(frequency int) {
 				}
 			} else {
 				// 如果数据库中存在，先检查redis
-				_, err := common.RedisGet(fmt.Sprintf("token:%s", key))
+				_, err = common.RedisGet(fmt.Sprintf("token:%s", key))
 				if err != nil {
 					// 如果redis中不存在，则跳过
 					continue
@@ -269,6 +269,9 @@ func SyncChannelCache(frequency int) {
 func CacheGetRandomSatisfiedChannel(group string, model string, retry int) (*Channel, error) {
 	if strings.HasPrefix(model, "gpt-4-gizmo") {
 		model = "gpt-4-gizmo-*"
+	}
+	if strings.HasPrefix(model, "gpt-4o-gizmo") {
+		model = "gpt-4o-gizmo-*"
 	}
 
 	// if memory cache is disabled, get channel directly from database
